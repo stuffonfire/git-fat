@@ -194,11 +194,14 @@ class GitFat(object):
         bucket_name,key,secret = self.get_s3()
         bucket = self.get_s3_bucket(bucket_name,key,secret)
         for file in files:
-            self.verbose('Getting object %s from s3 bucket %s' % (file,bucket_name))
             k = Key(bucket)
             k.key = file
             localfile = os.path.abspath(os.path.join(self.objdir,file))
-            k.get_contents_to_filename(localfile,cb=s3_percent_cb,num_cb=10)
+            if os.path.isfile(localfile):
+                self.verbose('Object %s already exists, skipping.' % file)
+            else:
+                self.verbose('Getting object %s from s3 bucket %s' % (file,bucket_name))
+                k.get_contents_to_filename(localfile,cb=s3_percent_cb,num_cb=10)
     def put_s3_files(self,files):
         bucket_name,key,secret = self.get_s3()
         bucket = self.get_s3_bucket(bucket_name,key,secret)
