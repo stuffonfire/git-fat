@@ -118,9 +118,24 @@ def gitconfig_set(name, value, file=None):
     args += [name, value]
     p = subprocess.check_call(args)
 
-def s3_percent_cb(complete, total):
-    sys.stdout.write('.')
-    sys.stdout.flush()
+try:
+    import fish
+    class S3Counter:
+        def __init__(self):
+            self.fish = None
+        def __call__(self, complete, total):
+            if self.fish is None:
+                self.fish = fish.ProgressFish(total=total/1024)
+            self.fish.animate(amount=complete/1024)
+except ImportError:
+    class S3Counter:
+        def __init__(self):
+            self.count = 0
+        def __call__(self, complete, total):
+            if complete * 10 / total > self.count:
+                self.count += 1
+                sys.stdout.write('.')
+                sys.stdout.flush()
 
 class GitFat(object):
     DecodeError = RuntimeError
@@ -201,7 +216,9 @@ class GitFat(object):
                 self.verbose('Object %s already exists, skipping.' % file)
             else:
                 self.verbose('Getting object %s from s3 bucket %s' % (file,bucket_name))
-                k.get_contents_to_filename(localfile,cb=s3_percent_cb,num_cb=10)
+                k.get_contents_to_filename(localfile,
+                                           cb=S3Counter(),
+                                           num_cb=500)
     def put_s3_files(self,files):
         bucket_name,key,secret = self.get_s3()
         bucket = self.get_s3_bucket(bucket_name,key,secret)
@@ -213,7 +230,9 @@ class GitFat(object):
                 k = Key(bucket)
                 k.key = file
                 localfile = os.path.abspath(os.path.join(self.objdir,file))
-                k.set_contents_from_filename(localfile,cb=s3_percent_cb,num_cb=10)
+                k.set_contents_from_filename(localfile,
+                                             cb=S3Counter(),
+                                             num_cb=500)
     def get_s3_bucket(self,bucket,key,secret):
         conn = S3Connection(key, secret)
         bucket = conn.get_bucket(bucket)
