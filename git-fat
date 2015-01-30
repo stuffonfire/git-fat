@@ -205,7 +205,7 @@ except ImportError:
         def __init__(self):
             self.count = 0
         def __call__(self, complete, total):
-            if complete * 10 / total > self.count:
+            if total > 0 and complete * 10 / total > self.count:
                 self.count += 1
                 sys.stdout.write('.')
                 sys.stdout.flush()
