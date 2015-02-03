@@ -336,6 +336,97 @@ class HTTPBackend(BackendInterface):
 
         return is_success
 
+try:
+    import fish
+    class S3Counter:
+        def __init__(self):
+            self.fish = None
+        def __call__(self, complete, total):
+            if self.fish is None:
+                self.fish = fish.ProgressFish(total=total/1024)
+            self.fish.animate(amount=complete/1024)
+except ImportError:
+    class S3Counter:
+        def __init__(self):
+            self.count = 0
+        def __call__(self, complete, total):
+            if total > 0 and complete * 10 / total > self.count:
+                self.count += 1
+                sys.stdout.write('.')
+                sys.stdout.flush()
+
+try:
+    from boto.s3.connection import S3Connection
+    from boto.s3.key import Key
+    class S3Backend(BackendInterface):
+
+        # def __init__(self,bucket,key,secret,objdir):
+        def __init__(self, objdir, **kwargs):
+            self.bucket = kwargs.get('bucket')
+            if not self.bucket:
+                raise RuntimeError('No s3 bucket configured for s3 backend')
+            self.key = kwargs.get('key')
+            if not self.key:
+                raise RuntimeError('No s3 key configured for s3 backend')
+            self.secret = kwargs.get('secret')
+            if not self.secret:
+                raise RuntimeError('No s3 secret configured for s3 backend')
+
+            self.objdir = objdir
+
+
+        def get_bucket(self):
+            conn = S3Connection(self.key, self.secret)
+            bkt = conn.get_bucket(self.bucket)
+            return bkt
+
+        def pull_files(self,files):
+            bkt = self.get_bucket()
+            for file in files:
+                localfile = os.path.abspath(os.path.join(self.objdir,file))
+                if os.path.isfile(localfile):
+                    logger.info('Object %s already exists, skipping.' % file)
+                else:
+                    logger.info('Getting object %s from s3 bucket %s' % (file,self.bucket))
+                    k = Key(bkt)
+                    k.key = file
+                    localfile = os.path.abspath(os.path.join(self.objdir,file))
+                    try:
+                        k.get_contents_to_filename(localfile,
+                                                   cb=S3Counter(),
+                                                   num_cb=500)
+                    except KeyboardInterrupt:
+                        # If we cancel during download, make sure the partial
+                        # download is removed.
+                        os.remove(localfile)
+                        raise
+
+        def push_files(self,files):
+            bkt = self.get_bucket()
+            all_keys = set( k.name for k in  bkt.list() )
+            for file in files:
+                if file in all_keys:
+                    logger.info('Object %s already exists in bucket %s, skipping.' % (file,self.bucket))
+                else:
+                    k = Key(bkt)
+                    k.key = file
+                    localfile = os.path.abspath(os.path.join(self.objdir,file))
+                    logger.info('Uploading object %s to s3 bucket %s' % (file,self.bucket))
+                    try:
+                        k.set_contents_from_filename(localfile,
+                                                     cb=S3Counter(),
+                                                     num_cb=500)
+                    except KeyboardInterrupt:
+                        # If we cancel during upload, delete the partially uploaded
+                        # remote object. Otherwise we'll have problems later.
+                        k.delete()
+                        raise
+except ImportError:
+    class S3Backend(object):
+
+        def __init__(self,bucket,key,secret,objdir):
+            raise RuntimeError("S3Backend requires boto.")
+
 
 class RSyncBackend(BackendInterface):
     """ Push and pull files from rsync remote """
@@ -408,6 +499,7 @@ BACKEND_MAP = {
     'rsync': RSyncBackend,
     'http': HTTPBackend,
     'copy': CopyBackend,
+    's3' : S3Backend,
 }
 
 
