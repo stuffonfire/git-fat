@@ -360,7 +360,6 @@ try:
     from boto.s3.key import Key
     class S3Backend(BackendInterface):
 
-        # def __init__(self,bucket,key,secret,objdir):
         def __init__(self, objdir, **kwargs):
             self.bucket = kwargs.get('bucket')
             if not self.bucket:
@@ -390,6 +389,12 @@ try:
                     logger.info('Getting object %s from s3 bucket %s' % (file,self.bucket))
                     k = Key(bkt)
                     k.key = file
+
+                    if not k.exists():
+                        error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commig with 'git log -S %s''' % (file, file)
+                        logger.error(error_msg)
+                        continue
+
                     localfile = os.path.abspath(os.path.join(self.objdir,file))
                     try:
                         k.get_contents_to_filename(localfile,
@@ -424,7 +429,7 @@ try:
 except ImportError:
     class S3Backend(object):
 
-        def __init__(self,bucket,key,secret,objdir):
+        def __init__(self, objdir, **kwargs):
             raise RuntimeError("S3Backend requires boto.")
 
 
