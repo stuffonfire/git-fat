@@ -857,7 +857,7 @@ class GitFat(object):
         mkdir_p(workdir)
 
         with open(filelist, 'rb') as excludes:
-            files_to_exclude = excludes.read().splitlines()
+            files_to_exclude = set(excludes.read().splitlines())
 
         ls_files = git('ls-files -s'.split(), stdout=sub.PIPE)
         uip = git('update-index --index-info'.split(), stdin=sub.PIPE)
