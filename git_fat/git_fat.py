@@ -391,7 +391,7 @@ try:
                     k.key = file
 
                     if not k.exists():
-                        error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commig with 'git log -S %s' ''' % (file, file)
+                        error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commit with 'git log -S %s' ''' % (file, file)
                         logger.error(error_msg)
                         continue
 
