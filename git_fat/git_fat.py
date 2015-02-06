@@ -336,24 +336,19 @@ class HTTPBackend(BackendInterface):
 
         return is_success
 
-try:
-    import fish
-    class S3Counter:
-        def __init__(self):
-            self.fish = None
-        def __call__(self, complete, total):
-            if self.fish is None:
-                self.fish = fish.ProgressFish(total=total/1024)
-            self.fish.animate(amount=complete/1024)
-except ImportError:
-    class S3Counter:
-        def __init__(self):
-            self.count = 0
-        def __call__(self, complete, total):
-            if total > 0 and complete * 10 / total > self.count:
-                self.count += 1
-                sys.stdout.write('.')
-                sys.stdout.flush()
+
+class S3Counter:
+    def __init__(self, prefix):
+        self.count = 0
+        self.prefix = prefix
+    def __call__(self, complete, total):
+        if total == 0:
+            pct = '    '
+        else:
+            pct = '%3d%%' % (100 * (1.0 * complete/total))
+        sys.stdout.write('%s %7dkb %s' %
+                         (self.prefix, complete/1000, pct))
+        sys.stdout.flush()
 
 try:
     from boto.s3.connection import S3Connection
@@ -381,7 +376,8 @@ try:
 
         def pull_files(self,files):
             bkt = self.get_bucket()
-            for file in files:
+            total = len(files)
+            for offset,file in enumerate(files):
                 localfile = os.path.abspath(os.path.join(self.objdir,file))
                 if os.path.isfile(localfile):
                     logger.info('Object %s already exists, skipping.' % file)
@@ -397,35 +393,48 @@ try:
 
                     localfile = os.path.abspath(os.path.join(self.objdir,file))
                     try:
+                        prefix = '\rdownloading (%d/%d) %s...' % (offset+1,total,file[:7])
                         k.get_contents_to_filename(localfile,
-                                                   cb=S3Counter(),
+                                                   cb=S3Counter(prefix),
                                                    num_cb=500)
                     except KeyboardInterrupt:
                         # If we cancel during download, make sure the partial
                         # download is removed.
                         os.remove(localfile)
                         raise
+            sys.stdout.write('\ndone.\n')
+            sys.stdout.flush()
 
         def push_files(self,files):
             bkt = self.get_bucket()
+            sys.stdout.write('listings s3... ')
+            sys.stdout.flush()
             all_keys = set( k.name for k in  bkt.list() )
-            for file in files:
+            sys.stdout.write('done.\n')
+            sys.stdout.flush()
+            total = len(files)
+            for offset,file in enumerate(files):
+                prefix =  '\ruploading (%d/%d) %s...' % (offset+1,total,file[:7])
                 if file in all_keys:
                     logger.info('Object %s already exists in bucket %s, skipping.' % (file,self.bucket))
+                    sys.stdout.write(prefix)
+                    sys.stdout.write('               ')
+                    sys.stdout.flush()
                 else:
                     k = Key(bkt)
                     k.key = file
                     localfile = os.path.abspath(os.path.join(self.objdir,file))
-                    logger.info('Uploading object %s to s3 bucket %s' % (file,self.bucket))
                     try:
                         k.set_contents_from_filename(localfile,
-                                                     cb=S3Counter(),
+                                                     cb=S3Counter(prefix),
                                                      num_cb=500)
                     except KeyboardInterrupt:
                         # If we cancel during upload, delete the partially uploaded
                         # remote object. Otherwise we'll have problems later.
                         k.delete()
                         raise
+            sys.stdout.write('\ndone.\n')
+            sys.stdout.flush()
 except ImportError:
     class S3Backend(object):
 
@@ -949,6 +958,9 @@ class GitFat(object):
         """ Get orphans, call backend pull """
         cached_objs = self._cached_objects()
 
+        sys.stdout.write('Counting missing fat objects...\n')
+        sys.stdout.flush()
+
         # TODO: Why use _orphan _and_ _referenced here?
         if pattern:
             # filter the working tree by a pattern
@@ -960,6 +972,9 @@ class GitFat(object):
         logger.debug("PULL: pattern={}, kwargs={}, len(files)={}"
                      .format(pattern, kwargs, len(files)))
 
+        sys.stdout.write('Missing %d objects.\n' % len(files))
+        sys.stdout.flush()
+
         if not self.backend.pull_files(files):
             sys.exit(1)
         # Make sure they're up to date
@@ -969,9 +984,13 @@ class GitFat(object):
         # We only want the intersection of the referenced files and ones we have cached
         # Prevents file doesn't exist errors, while saving on bw by default (_referenced only
         # checks HEAD for files)
+        sys.stdout.write('Counting fat objects...\n')
+        sys.stdout.flush()
         files = self._referenced_objects(**kwargs) & self._cached_objects()
         logger.debug("PUSH: unused_pattern={}, kwargs={}, len(files)={}"
                      .format(unused_pattern, kwargs, len(files)))
+        sys.stdout.write('Counted %d fat objects.\n' % len(files))
+        sys.stdout.flush()
         if not self.backend.push_files(files):
             sys.exit(1)
 
