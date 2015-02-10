@@ -669,15 +669,32 @@ class GitFat(object):
         revlist.wait()
 
     def _managed_files(self):
+        try:
+            from pygit2 import Repository
+
+            gitdir = sub.check_output('git rev-parse --git-dir'.split()).strip()
+            repo = Repository(gitdir)
+            def _get_digest(objhash):
+                blob = repo[objhash]
+                if blob.data.startswith(self._cookie):
+                    digest = blob.data.split()[2]
+                    return digest
+                return None
+        except ImportError:
+            def _get_digest(objhash):
+                # Read the actual file contents
+                readfile = git(['show', objhash], stdout=sub.PIPE)
+
+                return self._get_digest(readfile.stdout)
+                
+
         revlistgen = self._rev_list()
         # Find any objects that are git-fat placeholders which are tracked in the repository
         managed = {}
         for objhash, objtype, size in revlistgen:
             # files are of blob type
             if objtype == 'blob' and int(size) == self._magiclen:
-                # Read the actual file contents
-                readfile = git(['cat-file', '-p', objhash], stdout=sub.PIPE)
-                digest = self._get_digest(readfile.stdout)
+                digest = _get_digest(objhash)
                 if digest:
                     managed[objhash] = digest
 
