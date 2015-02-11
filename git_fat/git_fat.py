@@ -409,15 +409,30 @@ try:
 
         def push_files(self,files):
             bkt = self.get_bucket()
-            sys.stdout.write('listings s3... ')
+
+            s3cache = os.path.join(gitdir(), 'fat', 's3-cache')
+            mkdir_p(s3cache)
+            cached_keys = set(os.listdir(s3cache))
+
+            if len(files) - len(cached_keys) > 400:
+                sys.stdout.write('listings s3... ')
+                sys.stdout.flush()
+                all_keys = set( k.name for k in  bkt.list() )
+                sys.stdout.write('done.\n')
+                sys.stdout.flush()
+            else:
+                all_keys = set()
+
+            for file in (all_keys - cached_keys):
+                open(os.path.join(s3cache,file), 'a').close()
+
+            files_to_sync = (files - cached_keys - all_keys)
+            total = len(files_to_sync)
+            sys.stdout.write('Need to sync %d files.\n' % total)
             sys.stdout.flush()
-            all_keys = set( k.name for k in  bkt.list() )
-            sys.stdout.write('done.\n')
-            sys.stdout.flush()
-            total = len(files)
-            for offset,file in enumerate(files):
+            for offset,file in enumerate(files_to_sync):
                 prefix =  '\rsyncing (%d/%d) %s...' % (offset+1,total,file[:7])
-                if file in all_keys:
+                if file in cached_keys or file in all_keys:
                     logger.info('Object %s already exists in bucket %s, skipping.' % (file,self.bucket))
                     sys.stdout.write(prefix)
                     sys.stdout.write('               ')
@@ -425,16 +440,24 @@ try:
                 else:
                     k = Key(bkt)
                     k.key = file
-                    localfile = os.path.abspath(os.path.join(self.objdir,file))
-                    try:
-                        k.set_contents_from_filename(localfile,
-                                                     cb=S3Counter(prefix),
-                                                     num_cb=500)
-                    except KeyboardInterrupt:
-                        # If we cancel during upload, delete the partially uploaded
-                        # remote object. Otherwise we'll have problems later.
-                        k.delete()
-                        raise
+                    if not k.exists():
+                        localfile = os.path.abspath(os.path.join(self.objdir,file))
+                        try:
+                            k.set_contents_from_filename(localfile,
+                                                         cb=S3Counter(prefix),
+                                                         num_cb=500)
+                        except KeyboardInterrupt:
+                            # If we cancel during upload, delete the partially uploaded
+                            # remote object. Otherwise we'll have problems later.
+                            k.delete()
+                            raise
+                    else:
+                        sys.stdout.write(prefix)
+                        sys.stdout.write('               ')
+                        sys.stdout.flush()
+
+                open(os.path.join(s3cache,file), 'a').close()
+
             sys.stdout.write('\ndone.\n')
             sys.stdout.flush()
 except ImportError:
@@ -682,6 +705,8 @@ class GitFat(object):
                     return digest
                 return None
         except ImportError:
+            sys.stdout.write('Warning! This operation may be slow. Install libgit2 and pygit2 for a big speed boost.\n')
+            sys.stdout.flush()
             def _get_digest(objhash):
                 # Read the actual file contents
                 readfile = git(['show', objhash], stdout=sub.PIPE)
