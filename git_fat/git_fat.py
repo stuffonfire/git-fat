@@ -416,7 +416,7 @@ try:
             sys.stdout.flush()
             total = len(files)
             for offset,file in enumerate(files):
-                prefix =  '\ruploading (%d/%d) %s...' % (offset+1,total,file[:7])
+                prefix =  '\rsyncing (%d/%d) %s...' % (offset+1,total,file[:7])
                 if file in all_keys:
                     logger.info('Object %s already exists in bucket %s, skipping.' % (file,self.bucket))
                     sys.stdout.write(prefix)
