@@ -214,12 +214,14 @@ def _config_path(path=None):
     return path
 
 
-def _obj_dir():
+def gitdir():
     try:
-        gitdir = sub.check_output('git rev-parse --git-dir'.split()).strip()
+        return sub.check_output('git rev-parse --git-dir'.split()).strip()
     except sub.CalledProcessError:
-        raise RuntimeError('git-fat must be run from a git directory')
-    objdir = os.path.join(gitdir, 'fat', 'objects')
+        raise RuntimeError('git-fat must be run from a git directory')    
+
+def _obj_dir():
+    objdir = os.path.join(gitdir(), 'fat', 'objects')
     return objdir
 
 
@@ -672,8 +674,7 @@ class GitFat(object):
         try:
             from pygit2 import Repository
 
-            gitdir = sub.check_output('git rev-parse --git-dir'.split()).strip()
-            repo = Repository(gitdir)
+            repo = Repository(gitdir())
             def _get_digest(objhash):
                 blob = repo[objhash]
                 if blob.data.startswith(self._cookie):
@@ -883,8 +884,7 @@ class GitFat(object):
         return mode, objhash, stageno, filename
 
     def index_filter(self, filelist, add_gitattributes=True, **unused_kwargs):
-        gitdir = sub.check_output('git rev-parse --git-dir'.split()).strip()
-        workdir = os.path.join(gitdir, 'fat', 'index-filter')
+        workdir = os.path.join(gitdir(), 'fat', 'index-filter')
         mkdir_p(workdir)
 
         with open(filelist, 'rb') as excludes:
