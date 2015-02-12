@@ -414,7 +414,7 @@ try:
             mkdir_p(s3cache)
             cached_keys = set(os.listdir(s3cache))
 
-            if len(files) - len(cached_keys) > 400:
+            if len(files - cached_keys) > 400:
                 sys.stdout.write('listings s3... ')
                 sys.stdout.flush()
                 all_keys = set( k.name for k in  bkt.list() )
