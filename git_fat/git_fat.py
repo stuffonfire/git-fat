@@ -411,6 +411,7 @@ try:
                         raise
             sys.stdout.write('\ndone.\n')
             sys.stdout.flush()
+            return True
 
         def push_files(self,files):
             bkt = self.get_bucket()
@@ -465,6 +466,9 @@ try:
 
             sys.stdout.write('\ndone.\n')
             sys.stdout.flush()
+
+            return True
+
 except ImportError:
     class S3Backend(object):
 
