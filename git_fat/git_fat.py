@@ -15,6 +15,7 @@ import shutil
 import argparse
 import platform
 import stat
+import locale
 
 _logging.basicConfig(format='%(levelname)s:%(filename)s: %(message)s')
 logger = _logging.getLogger(__name__)
@@ -343,13 +344,17 @@ class S3Counter:
     def __init__(self, prefix):
         self.count = 0
         self.prefix = prefix
+        locale.setlocale(locale.LC_ALL, 'en_US')
+
     def __call__(self, complete, total):
         if total == 0:
             pct = '    '
         else:
             pct = '%3d%%' % (100 * (1.0 * complete/total))
-        sys.stdout.write('%s %7dkb %s' %
-                         (self.prefix, complete/1000, pct))
+        sys.stdout.write('%s %skb %s' %
+                         (self.prefix,
+                          locale.format("%7d",complete/1000,grouping=True),
+                          pct))
         sys.stdout.flush()
 
 try:
