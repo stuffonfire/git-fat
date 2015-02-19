@@ -1,0 +1,58 @@
+#!/usr/bin/env python
+
+import sys
+
+prefix = sys.stdin.read(12)
+if prefix == '#$# git-fat ':
+    import shutil
+    sys.stdout.write(prefix)
+    shutil.copyfileobj(sys.stdin, sys.stdout)
+else:
+    bytes_read = len(prefix)
+
+    import tempfile
+    import os
+    import os.path
+
+    temp_fd, temp_filename = tempfile.mkstemp()
+
+    import hashlib
+    h = hashlib.sha1()
+    h.update(prefix)
+    os.write(temp_fd, prefix)
+
+    s = sys.stdin.read(4096)
+    bytes_read += len(s)
+    while s:
+        h.update(s)
+        os.write(temp_fd, s)
+
+        s = sys.stdin.read(4096)
+        bytes_read += len(s)
+    os.close(temp_fd)
+
+    digest = h.hexdigest()
+    sys.stdout.write('#$# git-fat ')
+    sys.stdout.write(digest)
+    sys.stdout.write(' ')
+    sys.stdout.write('%20d' % bytes_read)
+    sys.stdout.write('\n')
+
+    gitdir = os.environ.get('GIT_DIR')
+    if gitdir is None:
+        try:
+            import subprocess as sub
+            gitdir= sub.check_output('git rev-parse --git-dir'.split()).strip()
+        except sub.CalledProcessError:
+            raise RuntimeError('git-fat must be run from a git directory')
+
+    fpath = os.path.join(gitdir,'fat','objects',digest)
+    if os.path.exists(fpath):
+        sys.stderr.write('removing file\n' )
+        os.remove(temp_filename)
+    else:
+        sys.stderr.write('renaming file %s\n' % fpath)
+        os.rename(temp_filename, fpath)
+
+
+
