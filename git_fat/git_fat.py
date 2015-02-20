@@ -579,11 +579,18 @@ class GitFat(object):
         '''
         if not self._configured():
             print('Setting filters in .git/config')
-            gitconfig_set('filter.fat.clean', 'git-fat filter-clean %f')
-            gitconfig_set('filter.fat.smudge', 'git-fat filter-smudge %f')
+            self.fast_filters()
             print('Creating .git/fat/objects')
             mkdir_p(self.objdir)
             print('Initialized git-fat')
+
+    def fast_filters(self):
+        gitconfig_set('filter.fat.clean', 'git-fatclean %f')
+        gitconfig_set('filter.fat.smudge', 'git-fatsmudge %f')        
+
+    def regular_filters(self):
+        gitconfig_set('filter.fat.clean', 'git-fat filter-clean %f')
+        gitconfig_set('filter.fat.smudge', 'git-fat filter-smudge %f')
 
     def _configured(self):
         '''
@@ -1196,6 +1203,12 @@ def main():
 
     sp = subparser.add_parser('list', help='list all files managed by git-fat')
     sp.set_defaults(func='list_files')
+
+    sp = subparser.add_parser('fast-filters', help='Update git config to use faster filters')
+    sp.set_defaults(func='fast_filters')
+
+    sp = subparser.add_parser('regular-filters', help='Update git config to use regular filters')
+    sp.set_defaults(func='regular_filters')
 
     # Legacy function to preserve backwards compatability
     sp = subparser.add_parser('pull-http', help="Deprecated, use `pull http` (no dash) instead")

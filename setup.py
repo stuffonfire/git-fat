@@ -25,7 +25,7 @@ setup(
     maintainer_email='alan.braithwaite@cyaninc.com',
     name='git-fat',
     packages=['git_fat'],
-    scripts=['bin/git-fat'],
+    scripts=['bin/git-fat', 'bin/git-fatsmudge', 'bin/git-fatclean'],
     url='https://github.com/cyaninc/git-fat',
     version=__version__,
     cmdclass={"test": Tox},
