@@ -48,10 +48,14 @@ else:
 
     fpath = os.path.join(gitdir,'fat','objects',digest)
     if os.path.exists(fpath):
-        sys.stderr.write('removing file\n' )
+        # sys.stderr.write('removing file\n' )
         os.remove(temp_filename)
     else:
-        sys.stderr.write('renaming file %s\n' % fpath)
+        # sys.stderr.write('renaming file %s\n' % fpath)
+        umask = os.umask(0)
+        os.umask(umask)
+
+        os.chmod(temp_filename, int('444', 8) & ~umask)
         os.rename(temp_filename, fpath)
 
 
