@@ -9,6 +9,7 @@ import time
 import stat
 import platform
 import re
+import hashlib
 
 _logging.basicConfig(format='%(levelname)s:%(filename)s: %(message)s')
 logger = _logging.getLogger(__name__)
@@ -306,10 +307,10 @@ class InitTestCase(Base):
         self.assertTrue(os.path.isdir('.git/fat/objects'))
 
         out = git('config filter.fat.clean')
-        self.assertEqual(out.strip(), 'git-fat filter-clean %f')
+        self.assertEqual(out.strip(), 'git-fatclean %f')
 
         out = git('config filter.fat.smudge')
-        self.assertEqual(out.strip(), 'git-fat filter-smudge %f')
+        self.assertEqual(out.strip(), 'git-fatsmudge %f')
 
     def test_git_fat_no_dotgitfat(self):
         logger.info("The next warning from the log file, with message about "
@@ -329,48 +330,6 @@ class InitTestCase(Base):
         out = git('fat find 9000', stderr=sub.STDOUT)
         self.assertTrue('somebin.png' in out)
 
-    def test_existing_files_pattern_match(self):
-        """ Don't convert existing files into git-fat files unless they get renamed """
-
-        expect = 'a fat file'
-        with open('a.fat', 'wb') as f:
-            f.write(expect)
-
-        commit('initial')
-
-        # Setup git-fat after first commit
-        self._setup_gitfat_files()
-        git('fat init')
-
-        # Initializing git-fat doesn't convert it
-        with open('a.fat', 'rb') as f:
-            actual = f.read()
-        self.assertEqual(expect, actual)
-        actual = read_index('a.fat')
-        self.assertEqual(expect, actual)
-
-        # change the repo without changing a.fat
-        with open('README', 'wb') as f:
-            f.write("something else changed")
-        commit('a.fat doesnt change')
-        actual = read_index('a.fat')
-        self.assertEqual(expect, actual)
-
-        # changing the file alone doesn't convert it
-        append_me = '\nmore stuff'
-        with open('a.fat', 'ab') as f:
-            f.write(append_me)
-        commit('a.fat changed')
-        actual = read_index('a.fat')
-        self.assertEqual(expect + append_me, actual)
-
-        # finally, rename the file
-        move_file('a.fat', 'b.fat')
-        commit('a.fat->b.fat')
-        actual = read_index('b.fat')
-        expect = '#$# git-fat ebf646b3730c9f5ec2625081eb488c55000f622e                   21\n'
-        self.assertEqual(expect, actual)
-
 
 class InitRepoTestCase(Base):
 
@@ -379,7 +338,7 @@ class InitRepoTestCase(Base):
 
         self._setup_gitfat_files()
         git('fat init')
-        commit('inital')
+        commit('initial')
 
 
 class FileTypeTestCase(InitRepoTestCase):
@@ -408,6 +367,59 @@ class FileTypeTestCase(InitRepoTestCase):
         commit("Nobody expects a space inafilename")
         self.assertTrue('#$# git-fat ' in read_index(filename))
 
+class AddNewObjectTestCase(InitRepoTestCase):
+
+    
+    def test_add_new_object(self):
+        digest = 'f0a40e80bfc8a98f5f8f78e2f532bfd2b7d3d937'
+        fpath = os.path.join(os.getcwd(), '.git/fat/objects', digest)
+        self.assertFalse(os.path.exists(fpath))
+
+        FNULL = open(os.devnull, 'w')
+        sub.check_call(['dd','if=/dev/zero','of=testfile.fat','bs=1024','count=5000'],
+                       stdout=FNULL, stderr=FNULL)
+
+        git('add testfile.fat')
+
+        self.assertTrue(os.path.exists(fpath))
+        self.assertEqual(
+            '#$# git-fat f0a40e80bfc8a98f5f8f78e2f532bfd2b7d3d937              5120000\n',
+            read_index('testfile.fat')
+        )
+        h = hashlib.sha1()
+        with open(fpath) as f:
+            h.update(f.read())
+        actual_digest = h.hexdigest()
+        self.assertEqual(actual_digest, digest)
+            
+
+class FastFilterCommandsTestCase(InitRepoTestCase):
+    def test_fast_filter_commands(self):
+
+        # start with fast
+        git('fat fast-filters')
+        out = git('config filter.fat.clean')
+        self.assertEqual(out.strip(), 'git-fatclean %f')        
+
+        out = git('config filter.fat.smudge')
+        self.assertEqual(out.strip(), 'git-fatsmudge %f')        
+
+
+        # try with regular
+        git('fat regular-filters')
+        out = git('config filter.fat.clean')
+        self.assertEqual(out.strip(), 'git-fat filter-clean %f')        
+
+        out = git('config filter.fat.smudge')
+        self.assertEqual(out.strip(), 'git-fat filter-smudge %f')        
+
+        # try fast again
+        git('fat fast-filters')
+        out = git('config filter.fat.clean')
+        self.assertEqual(out.strip(), 'git-fatclean %f')        
+
+        out = git('config filter.fat.smudge')
+        self.assertEqual(out.strip(), 'git-fatsmudge %f')
 
 class GeneralTestCase(InitRepoTestCase):
 
