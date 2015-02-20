@@ -144,6 +144,12 @@ def read_index(filename):
     contents = git(['cat-file', '-p', objhash])
     return contents
 
+def sha1(fpath):
+    h = hashlib.sha1()
+    with open(fpath) as f:
+        h.update(f.read())
+    return h.hexdigest()    
+
 
 # -----------------------------------------------------------------------------
 # On Windows files may be read only and may require changing
@@ -386,12 +392,8 @@ class AddNewObjectTestCase(InitRepoTestCase):
             '#$# git-fat f0a40e80bfc8a98f5f8f78e2f532bfd2b7d3d937              5120000\n',
             read_index('testfile.fat')
         )
-        h = hashlib.sha1()
-        with open(fpath) as f:
-            h.update(f.read())
-        actual_digest = h.hexdigest()
-        self.assertEqual(actual_digest, digest)
-            
+        self.assertEqual(sha1(fpath), digest)
+
 
 class FastFilterCommandsTestCase(InitRepoTestCase):
     def test_fast_filter_commands(self):
@@ -526,6 +528,55 @@ class GeneralTestCase(InitRepoTestCase):
         self.assertTrue(flowerpot in read_index('.gitattributes'))
 
         delete_file(filename)
+
+
+class FastSmudgeTestCase(InitRepoTestCase):
+
+    def setUp(self):
+        super(FastSmudgeTestCase, self).setUp()
+
+        filename = 'a.fat'
+        contents = 'a'
+        with open(filename, 'wb') as f:
+            f.write(contents * 1024)
+        filename = 'b.fat'
+        with open(filename, 'wb') as f:
+            f.write(contents * 1024 * 1024)
+        filename = 'c d e.fat'
+        with open(filename, 'wb') as f:
+            f.write(contents * 2048 * 1024)
+        commit("add fatfiles")
+
+
+    def test_smudge(self):
+        test_files = [
+            'a.fat',
+            'b.fat',
+            'c d e.fat'
+        ]
+        for fname in test_files:
+            digest = sha1(fname)
+            gitdir = os.path.join(os.getcwd(), '.git')
+            fpath = os.path.join(gitdir, 'fat', 'objects', digest)
+            self.assertTrue(os.path.exists(fpath))
+
+            findex = read_index(fname)
+
+            with open(fpath) as f:
+                fcontents = f.read()
+
+            cleanp = sub.Popen(['git', 'fatsmudge', fname],stdin=sub.PIPE, stdout=sub.PIPE, env={'GIT_DIR': gitdir})
+            out, _ = cleanp.communicate(findex)
+            
+            self.assertEquals(fcontents, out)
+
+            # make sure things work even when git fat file doesn't exist
+            os.remove(fpath)
+            cleanp = sub.Popen(['git', 'fatsmudge', fname],stdin=sub.PIPE, stdout=sub.PIPE, env={'GIT_DIR': gitdir})
+            out, _ = cleanp.communicate(findex)
+
+            self.assertEquals(findex, out)
+
 
 
 if __name__ == "__main__":
