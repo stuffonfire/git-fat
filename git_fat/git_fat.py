@@ -344,7 +344,10 @@ class S3Counter:
     def __init__(self, prefix):
         self.count = 0
         self.prefix = prefix
-        locale.setlocale(locale.LC_ALL, 'en_US')
+        try:
+            locale.setlocale(locale.LC_ALL, 'en_US')
+        except:
+            pass
 
     def __call__(self, complete, total):
         if total == 0:
