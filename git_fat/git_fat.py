@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- mode:python -*-
 
 from __future__ import print_function, with_statement
@@ -16,6 +16,17 @@ import argparse
 import platform
 import stat
 import locale
+ge, gp = (None, None)
+try:
+	import gevent
+	import gevent.pool
+	import gevent.monkey
+	ge = gevent
+	gp = gevent.pool
+	gevent.monkey.patch_all()
+except ImportError, e:
+	sys.stderr.write('cannot import gevent -- S3 will not be parallelized\n')
+
 
 _logging.basicConfig(format='%(levelname)s:%(filename)s: %(message)s')
 logger = _logging.getLogger(__name__)
@@ -387,34 +398,73 @@ try:
         def pull_files(self,files):
             bkt = self.get_bucket()
             total = len(files)
-            for offset,file in enumerate(files):
-                localfile = os.path.abspath(os.path.join(self.objdir,file))
-                if os.path.isfile(localfile):
-                    logger.info('Object %s already exists, skipping.' % file)
+            if ge and gp:
+                self._pull_files_parallel(files)
+            else:
+                self._pill_files_serial(files)
+
+        def _pull_files_parallel(self, files):
+            stats = {'total': len(files), 'remain': len(files)}
+            def _pull_parallel_one(stats, fn):
+                conn = S3Connection(self.key, self.secret)
+                bkt = conn.get_bucket(self.bucket)
+                localfn = os.path.abspath(os.path.join(self.objdir,fn))
+                if os.path.isfile(localfn):
+                    logger.info('Object %s already exists, skipping.' % fn)
                 else:
-                    logger.info('Getting object %s from s3 bucket %s' % (file,self.bucket))
+                    logger.info('Getting object %s from s3 bucket %s' % (fn,self.bucket))
                     k = Key(bkt)
-                    k.key = file
-
+                    k.key = fn
                     if not k.exists():
-                        error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commit with 'git log -S %s' ''' % (file, file)
+                        error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commit with 'git log -S %s' ''' % (fn, fn)
                         logger.error(error_msg)
-                        continue
+                    else:
+                        localfn = os.path.abspath(os.path.join(self.objdir,fn))
+                        try:
+                            stats['remain'] -= 1
+                            prefix = '\rdownloading (%d/%d) %s...' % (stats['total']-stats['remain'],stats['total'],fn[:7])
+                            k.get_contents_to_filename(localfn,
+                                                       cb=S3Counter(prefix),
+                                                       num_cb=500)
+                        except KeyboardInterrupt:
+                            # If we cancel during download, make sure the partial
+                            # download is removed.
+                            os.remove(localfn)
+                            raise
+            pool = gevent.pool.Pool(32)
+            for f in files:
+                pool.spawn(_pull_parallel_one, stats, f)
+            pool.join()
 
+        def _pull_files_serial(self, files):
+                for offset,file in enumerate(files):
                     localfile = os.path.abspath(os.path.join(self.objdir,file))
-                    try:
-                        prefix = '\rdownloading (%d/%d) %s...' % (offset+1,total,file[:7])
-                        k.get_contents_to_filename(localfile,
-                                                   cb=S3Counter(prefix),
-                                                   num_cb=500)
-                    except KeyboardInterrupt:
-                        # If we cancel during download, make sure the partial
-                        # download is removed.
-                        os.remove(localfile)
-                        raise
-            sys.stdout.write('\ndone.\n')
-            sys.stdout.flush()
-            return True
+                    if os.path.isfile(localfile):
+                        logger.info('Object %s already exists, skipping.' % file)
+                    else:
+                        logger.info('Getting object %s from s3 bucket %s' % (file,self.bucket))
+                        k = Key(bkt)
+                        k.key = file
+
+                        if not k.exists():
+                            error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commit with 'git log -S %s' ''' % (file, file)
+                            logger.error(error_msg)
+                            continue
+
+                        localfile = os.path.abspath(os.path.join(self.objdir,file))
+                        try:
+                            prefix = '\rdownloading (%d/%d) %s...' % (offset+1,total,file[:7])
+                            k.get_contents_to_filename(localfile,
+                                                       cb=S3Counter(prefix),
+                                                       num_cb=500)
+                        except KeyboardInterrupt:
+                            # If we cancel during download, make sure the partial
+                            # download is removed.
+                            os.remove(localfile)
+                            raise
+                sys.stdout.write('\ndone.\n')
+                sys.stdout.flush()
+                return True
 
         def push_files(self,files):
             bkt = self.get_bucket()
