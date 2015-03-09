@@ -23,7 +23,7 @@ try:
 	import gevent.monkey
 	ge = gevent
 	gp = gevent.pool
-	gevent.monkey.patch_all()
+	gevent.monkey.patch_all(subprocess=True)
 except ImportError, e:
 	sys.stderr.write('cannot import gevent -- S3 will not be parallelized\n')
 
