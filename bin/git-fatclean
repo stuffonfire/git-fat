@@ -1,6 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 import sys
+import shutil
 
 prefix = sys.stdin.read(12)
 if prefix == '#$# git-fat ':
@@ -56,7 +57,7 @@ else:
         os.umask(umask)
 
         os.chmod(temp_filename, int('444', 8) & ~umask)
-        os.rename(temp_filename, fpath)
+        shutil.move(temp_filename, fpath)
 
 
 
