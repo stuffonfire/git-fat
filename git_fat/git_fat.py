@@ -1,7 +1,17 @@
 #!/usr/bin/python
 # -*- mode:python -*-
-
 from __future__ import print_function, with_statement
+
+ge, gp = (None, None)
+try:
+    import gevent
+    import gevent.pool
+    import gevent.monkey
+    ge = gevent
+    gp = gevent.pool
+    gevent.monkey.patch_all(subprocess=True)
+except ImportError, e:
+    sys.stderr.write('cannot import gevent -- S3 will not be parallelized\n')
 
 import hashlib
 import os
@@ -16,17 +26,6 @@ import argparse
 import platform
 import stat
 import locale
-ge, gp = (None, None)
-try:
-	import gevent
-	import gevent.pool
-	import gevent.monkey
-	ge = gevent
-	gp = gevent.pool
-	gevent.monkey.patch_all(subprocess=True)
-except ImportError, e:
-	sys.stderr.write('cannot import gevent -- S3 will not be parallelized\n')
-
 
 _logging.basicConfig(format='%(levelname)s:%(filename)s: %(message)s')
 logger = _logging.getLogger(__name__)
@@ -821,11 +820,13 @@ class GitFat(object):
         patterns = patterns or []
         # Null-terminated for proper file name handling (spaces)
         for fname in sub.check_output(['git', 'ls-files', '-z'] + patterns).split('\x00')[:-1]:
-            st = os.lstat(fname)
-            if st.st_size != self._magiclen or os.path.islink(fname):
-                continue
-            with open(fname, "rb") as f:
-                digest = self._get_digest(f)
+            digest = None
+            if not os.path.exists(fname):
+                st = os.lstat(fname)
+                if st.st_size != self._magiclen or os.path.islink(fname):
+                    continue
+                with open(fname, "rb") as f:
+                    digest = self._get_digest(f)
             if digest:
                 yield (digest, fname)
 
@@ -1086,7 +1087,7 @@ class GitFat(object):
         # TODO: Why use _orphan _and_ _referenced here?
         if pattern:
             # filter the working tree by a pattern
-            files = set(digest for digest, fname in self._orphan_files(patterns=(pattern,))) - cached_objs
+            files = set(digest for digest, fname in self._orphan_files(patterns=(pattern,))) - cached_objs - {None,}
         else:
             # default pull any object referenced but not stored
             files = self._referenced_objects(**kwargs) - cached_objs
