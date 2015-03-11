@@ -406,6 +406,7 @@ try:
 
         def _pull_files_parallel(self, files):
             stats = {'total': len(files), 'remain': len(files)}
+            pool = gevent.pool.Pool(32)
             def _pull_parallel_one(stats, fn):
                 conn = S3Connection(self.key, self.secret)
                 bkt = conn.get_bucket(self.bucket)
@@ -432,7 +433,11 @@ try:
                             # download is removed.
                             os.remove(localfn)
                             raise
-            pool = gevent.pool.Pool(32)
+						except Exception, e:
+							# re-download this file on any error
+							logging.warning('S3 pull of %(fn)s failed: %(e)s; re-queueing download in 5 seconds' % locals())
+							gevent.sleep(5)
+							pool.spawn(_pull_parallel_one, stats(fb)
             for f in files:
                 pool.spawn(_pull_parallel_one, stats, f)
             pool.join()
