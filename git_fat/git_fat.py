@@ -401,7 +401,8 @@ try:
             if ge and gp:
                 self._pull_files_parallel(files)
             else:
-                self._pill_files_serial(files)
+                self._pull_files_serial(files)
+            return True
 
         def _pull_files_parallel(self, files):
             stats = {'total': len(files), 'remain': len(files)}
