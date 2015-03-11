@@ -1029,8 +1029,7 @@ class GitFat(object):
         for digest, fname in self._orphan_files():
             objpath = os.path.join(self.objdir, digest)
             if os.access(objpath, os.R_OK):
-                if not quiet:
-                    print('Restoring %s -> %s' % (digest, fname))
+                print('Restoring %s -> %s' % (digest, fname))
                 # The output of our smudge filter depends on the existence of
                 # the file in .git/fat/objects, but git caches the file stat
                 # from the previous time the file was smudged, therefore it
