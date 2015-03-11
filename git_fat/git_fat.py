@@ -2,6 +2,8 @@
 # -*- mode:python -*-
 from __future__ import print_function, with_statement
 
+import sys
+
 ge, gp = (None, None)
 try:
     import gevent
@@ -16,7 +18,6 @@ except ImportError, e:
 import hashlib
 import os
 import subprocess as sub
-import sys
 import tempfile
 import warnings
 import ConfigParser as cfgparser
