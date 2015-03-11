@@ -277,7 +277,7 @@ class BackendInterface(object):
         """ Return True if push was successful, False otherwise. Not required but useful """
         raise NotImplementedError(NOT_IMPLEMENTED_MESSAGE)
 
-    def pull_files(self, file_list):
+    def pull_files(self, file_list, **kwargs):
         """ Return True if pull was successful, False otherwise """
         raise NotImplementedError(NOT_IMPLEMENTED_MESSAGE)
 
@@ -292,7 +292,7 @@ class CopyBackend(BackendInterface):
         self.other_path = other_path
         self.base_dir = base_dir
 
-    def pull_files(self, file_list):
+    def pull_files(self, file_list, **kwargs):
 
         for f in file_list:
             fullpath = os.path.join(self.other_path, f)
@@ -319,7 +319,7 @@ class HTTPBackend(BackendInterface):
         self.remote_url = remote_url
         self.base_dir = base_dir
 
-    def pull_files(self, file_list):
+    def pull_files(self, file_list, **kwargs):
         is_success = True
 
         for o in file_list:
@@ -395,18 +395,19 @@ try:
             bkt = conn.get_bucket(self.bucket)
             return bkt
 
-        def pull_files(self,files):
+        def pull_files(self,files, **kwargs):
             bkt = self.get_bucket()
             total = len(files)
             if ge and gp:
-                self._pull_files_parallel(files)
+                self._pull_files_parallel(files, **kwargs)
             else:
-                self._pull_files_serial(files)
+                self._pull_files_serial(files, **kwargs)
             return True
 
-        def _pull_files_parallel(self, files):
+        def _pull_files_parallel(self, files, **kwargs):
             stats = {'total': len(files), 'remain': len(files)}
             pool = gevent.pool.Pool(32)
+            quiet = kwargs.get('quiet', False)
             def _pull_parallel_one(stats, fn):
                 conn = S3Connection(self.key, self.secret)
                 bkt = conn.get_bucket(self.bucket)
@@ -427,7 +428,7 @@ try:
                             prefix = '\rdownloading (%d/%d) %s...' % (stats['total']-stats['remain'],stats['total'],fn[:7])
                             k.get_contents_to_filename(localfn,
                                                        cb=S3Counter(prefix),
-                                                       num_cb=500)
+                                                       num_cb=0 if quiet else 500)
                         except KeyboardInterrupt:
                             # If we cancel during download, make sure the partial
                             # download is removed.
@@ -442,7 +443,7 @@ try:
                 pool.spawn(_pull_parallel_one, stats, f)
             pool.join()
 
-        def _pull_files_serial(self, files):
+        def _pull_files_serial(self, files, **kwargs):
             bkt = self.get_bucket()
             total = len(files)
             for offset,file in enumerate(files):
@@ -1020,14 +1021,15 @@ class GitFat(object):
         for f in managed.keys():
             print(f, managed.get(f))
 
-    def checkout(self, show_orphans=False, **unused_kwargs):
+    def checkout(self, show_orphans=False, quiet=False, **unused_kwargs):
         '''
         Update any stale files in the present working tree
         '''
         for digest, fname in self._orphan_files():
             objpath = os.path.join(self.objdir, digest)
             if os.access(objpath, os.R_OK):
-                print('Restoring %s -> %s' % (digest, fname))
+                if not quiet:
+                    print('Restoring %s -> %s' % (digest, fname))
                 # The output of our smudge filter depends on the existence of
                 # the file in .git/fat/objects, but git caches the file stat
                 # from the previous time the file was smudged, therefore it
@@ -1076,6 +1078,7 @@ class GitFat(object):
     def pull(self, pattern=None, **kwargs):
         """ Get orphans, call backend pull """
         cached_objs = self._cached_objects()
+        quiet = kwargs.pop('quiet', False)
 
         sys.stdout.write('Counting missing fat objects...\n')
         sys.stdout.flush()
@@ -1094,10 +1097,10 @@ class GitFat(object):
         sys.stdout.write('Missing %d objects.\n' % len(files))
         sys.stdout.flush()
 
-        if not self.backend.pull_files(files):
+        if not self.backend.pull_files(files, quiet=quiet):
             sys.exit(1)
         # Make sure they're up to date
-        self.checkout()
+        self.checkout(quiet=quiet)
 
     def push(self, unused_pattern=None, **kwargs):
         # We only want the intersection of the referenced files and ones we have cached
@@ -1249,6 +1252,7 @@ def main():
     sp.set_defaults(func='push')
 
     sp = subparser.add_parser('pull', help='pull fatfiles from remote git-fat server')
+    sp.add_argument("--quiet", "-q", action="store_true", help='do not print progress information')
     sp.add_argument("backend", nargs="?", help='pull using given backend')
     sp.set_defaults(func='pull')
 
