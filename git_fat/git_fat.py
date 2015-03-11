@@ -437,7 +437,7 @@ try:
                             # re-download this file on any error
                             logging.warning('S3 pull of %(fn)s failed: %(e)s; re-queueing download in 5 seconds' % locals())
                             gevent.sleep(5)
-                            pool.spawn(_pull_parallel_one, stats(fb)
+                            pool.spawn(_pull_parallel_one, stats(fb))
             for f in files:
                 pool.spawn(_pull_parallel_one, stats, f)
             pool.join()
