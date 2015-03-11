@@ -438,34 +438,36 @@ try:
             pool.join()
 
         def _pull_files_serial(self, files):
-                for offset,file in enumerate(files):
+            bkt = self.get_bucket()
+            total = len(files)
+            for offset,file in enumerate(files):
+                localfile = os.path.abspath(os.path.join(self.objdir,file))
+                if os.path.isfile(localfile):
+                    logger.info('Object %s already exists, skipping.' % file)
+                else:
+                    logger.info('Getting object %s from s3 bucket %s' % (file,self.bucket))
+                    k = Key(bkt)
+                    k.key = file
+
+                    if not k.exists():
+                        error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commit with 'git log -S %s' ''' % (file, file)
+                        logger.error(error_msg)
+                        continue
+
                     localfile = os.path.abspath(os.path.join(self.objdir,file))
-                    if os.path.isfile(localfile):
-                        logger.info('Object %s already exists, skipping.' % file)
-                    else:
-                        logger.info('Getting object %s from s3 bucket %s' % (file,self.bucket))
-                        k = Key(bkt)
-                        k.key = file
-
-                        if not k.exists():
-                            error_msg = '''Key (%s) does not exist on s3. Someone probably forgot to run 'git fat push'. You can find the offending commit with 'git log -S %s' ''' % (file, file)
-                            logger.error(error_msg)
-                            continue
-
-                        localfile = os.path.abspath(os.path.join(self.objdir,file))
-                        try:
-                            prefix = '\rdownloading (%d/%d) %s...' % (offset+1,total,file[:7])
-                            k.get_contents_to_filename(localfile,
-                                                       cb=S3Counter(prefix),
-                                                       num_cb=500)
-                        except KeyboardInterrupt:
-                            # If we cancel during download, make sure the partial
-                            # download is removed.
-                            os.remove(localfile)
-                            raise
-                sys.stdout.write('\ndone.\n')
-                sys.stdout.flush()
-                return True
+                    try:
+                        prefix = '\rdownloading (%d/%d) %s...' % (offset+1,total,file[:7])
+                        k.get_contents_to_filename(localfile,
+                                                   cb=S3Counter(prefix),
+                                                   num_cb=500)
+                    except KeyboardInterrupt:
+                        # If we cancel during download, make sure the partial
+                        # download is removed.
+                        os.remove(localfile)
+                        raise
+            sys.stdout.write('\ndone.\n')
+            sys.stdout.flush()
+            return True
 
         def push_files(self,files):
             bkt = self.get_bucket()
