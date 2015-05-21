@@ -406,7 +406,7 @@ try:
 
         def _pull_files_parallel(self, files, **kwargs):
             stats = {'total': len(files), 'remain': len(files)}
-            pool = gevent.pool.Pool(32)
+            pool = gevent.pool.Pool(16)
             quiet = kwargs.get('quiet', False)
             def _pull_parallel_one(stats, fn):
                 conn = S3Connection(self.key, self.secret)
